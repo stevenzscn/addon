@@ -14,34 +14,35 @@ static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r) {
         return rc;
     }
 
-    u_char *response = ngx_pcalloc(r->pool, 1024);
-    if (response == NULL) {
+    char *uri_key = "uri:";
+    ngx_buf_t *uri_key_buf;
+    uri_key_buf = ngx_create_temp_buf(r->pool, strlen(uri_key));
+    if (uri_key_buf == NULL) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
+    ngx_memcpy(uri_key_buf->pos, uri_key, strlen(uri_key));
+    uri_key_buf->last = uri_key_buf->pos + strlen(uri_key);
+    uri_key_buf->last_buf = 0;
 
-    unsigned pos = 0;
-    char *field = "request_line: ";
-    ngx_memcpy(response + pos, field, strlen(field));
-    pos += strlen(field);
-    ngx_memcpy(response + pos, r->request_line.data, r->request_line.len);
-    pos += r->request_line.len;
+    ngx_buf_t *uri_value_buf;
+    uri_value_buf = ngx_create_temp_buf(r->pool, r->uri.len);
+    if (uri_value_buf == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+    ngx_memcpy(uri_value_buf->pos, r->uri.data, r->uri.len);
+    uri_value_buf->last = uri_value_buf->pos + r->uri.len;
+    uri_value_buf->last_buf = 1;
 
-    field = "\nuri: ";
-    ngx_memcpy(response + pos, field, strlen(field));
-    pos += strlen(field);
-    ngx_memcpy(response + pos, r->uri.data, r->uri.len);
-    pos += r->uri.len;
-
-    field = "\nargs: ";
-    ngx_memcpy(response + pos, field, strlen(field));
-    pos += strlen(field);
-    ngx_memcpy(response + pos, r->args.data, r->args.len);
-    pos += r->args.len;
+    ngx_chain_t out_key, out_value;
+    out_key.buf = uri_key_buf;
+    out_value.buf = uri_value_buf;
+    out_key.next = &out_value;
+    out_value.next = NULL;
 
     ngx_str_t type = ngx_string("text/plain");
 
     r->headers_out.status = NGX_HTTP_OK;
-    r->headers_out.content_length_n = pos;
+    r->headers_out.content_length_n = strlen(uri_key) + r->uri.len;
     r->headers_out.content_type = type;
 
     rc = ngx_http_send_header(r);
@@ -49,21 +50,7 @@ static ngx_int_t ngx_http_mytest_handler(ngx_http_request_t *r) {
         return rc;
     }
 
-    ngx_buf_t *b;
-    b = ngx_create_temp_buf(r->pool, pos);
-    if (b == NULL) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-    ngx_memcpy(b->pos, response, pos);
-    b->last = b->pos + pos;
-    b->last_buf = 1;
-
-    ngx_chain_t out;
-    out.buf = b;
-    out.next = NULL;
-
-    return ngx_http_output_filter(r, &out);
+    return ngx_http_output_filter(r, &out_key);
 }
 
 static char *
